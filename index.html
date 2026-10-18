@@ -31,6 +31,7 @@
     if(p && /^[a-z][a-z0-9-]{2,29}$/i.test(p)){ slug=p.toLowerCase(); localStorage.setItem('mz_tenant',slug); }
     else if(tok){ slug=adm||localStorage.getItem('mz_tenant'); if(slug) localStorage.setItem('mz_tenant',slug); } else if(location.protocol!=='http:' && location.protocol!=='https:' && localStorage.getItem('mz_preview')==='1'){ slug=localStorage.getItem('mz_tenant'); } /* مدرس راجع بجلسته: يكمل منصته. أي حد تاني من غير رابط: البوابة */
     /* جلسة الإدارة تخص منصة واحدة: لو فتحنا رابط منصة تانية نتعامل كطالب هناك */
+    try{ if(sessionStorage.getItem('mz_owner_return')!=='1' && localStorage.getItem('mz_owner_return')==='1' && localStorage.getItem('mz_owner_token')){ sessionStorage.setItem('mz_owner_return','1'); if(!sessionStorage.getItem('mz_owner_token')) sessionStorage.setItem('mz_owner_token',localStorage.getItem('mz_owner_token')); } }catch(e){} /* إصلاح: علامة زيارة المالك كانت بتضيع لما المتصفح يقفل التاب بعد ساعات */
     var ownerVisit=false; try{ ownerVisit=sessionStorage.getItem('mz_owner_return')==='1'; }catch(e){}
     /* رابط الطلاب (?t=) يفتح وضع الطالب دايمًا حتى لو الجهاز مسجّل بجيميل المدرس. المدرس يدخل من الرابط الرئيسي من غير ?t= */
     /* التطبيق المثبّت (PWA) بيفتح على رابط منصة المدرس (/slug) وده نفس رابط الطلاب، فكان المدرس بيدخل كطالب. الحل: لو الفتح من التطبيق المثبّت وعلى منصة المدرس نفسه (وعليها جلسة إدارة) يبقى دخول مدرس، مش طالب. الطالب ما عندوش جلسة إدارة فمفيش أي تأثير عليه. الرابط العادي في المتصفح لسه بيفتح وضع الطالب زي ما هو. */
@@ -245,12 +246,35 @@ window.mzViewApply();
 <meta name="apple-mobile-web-app-title" content="المنصة التعليمية" id="mzAppTitle">
 <meta name="theme-color" content="#5B2BB5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Poppins:wght@500;600;700;800;900&family=Dancing+Script:wght@600;700&family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Poppins:wght@500;600;700;800;900&family=Dancing+Script:wght@600;700&family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script>
+/* مكتبات تقيلة (PDF/Word/شهادات) مش محتاجينها في أول ثانية: بتتحمّل في الخلفية بعد ما الشاشة تظهر، أو لحظة الاستخدام */
+(function(){
+  var LIBS={
+    jspdf:{u:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',ok:function(){return !!(window.jspdf&&window.jspdf.jsPDF);}},
+    pdfjs:{u:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',ok:function(){return !!window.pdfjsLib;},after:function(){ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} }},
+    mammoth:{u:'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',ok:function(){return !!window.mammoth;}}
+  };
+  var pend={};
+  window.mzLoadLib=function(k){
+    var L=LIBS[k]; if(!L) return Promise.resolve(false);
+    if(L.ok()) return Promise.resolve(true);
+    if(pend[k]) return pend[k];
+    pend[k]=new Promise(function(res){
+      var sc=document.createElement('script'); sc.src=L.u; sc.async=true;
+      sc.onload=function(){ try{ L.after&&L.after(); }catch(e){} res(L.ok()); };
+      sc.onerror=function(){ pend[k]=null; res(false); };
+      document.head.appendChild(sc);
+    });
+    return pend[k];
+  };
+  function idle(){ ['jspdf','pdfjs','mammoth'].reduce(function(p,k){ return p.then(function(){ return window.mzLoadLib(k); }); },Promise.resolve()); }
+  window.addEventListener('load',function(){ setTimeout(function(){ (window.requestIdleCallback||function(f){setTimeout(f,300);})(idle); },2500); });
+})();
+</script>
 <style>
 :root{
   --bg1:#DCE7F7;
@@ -2391,7 +2415,7 @@ html.mz-dark .gm-res{background:rgba(30,24,50,.95)}
 }
 @media (prefers-reduced-motion:reduce){.bl-prog-bar i{transition:none;} .bl-modal-box,.bl-h.open .bl-h-body{animation:none;}}
 </style>
-<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style id="mzCoverCss">
 html.mz-cover-on::before{content:"";position:fixed;inset:0;z-index:2147483000;background:radial-gradient(800px 500px at 82% -10%,rgba(124,92,255,.38),transparent 60%),linear-gradient(170deg,#140b33,#1d1050 55%,#120a2e)}
 html.mz-cover-on::after{content:"";position:fixed;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:#d8b866;z-index:2147483001;animation:mzCvSpin .9s linear infinite}
@@ -2400,6 +2424,110 @@ html.mz-cover-fade::after{animation:mzCvIn .45s ease both,mzCvSpin .9s linear .4
 html.mz-cover-on.mz-cover-off::before,html.mz-cover-on.mz-cover-off::after{opacity:0;pointer-events:none;transition:opacity .5s ease;animation:none}
 @keyframes mzCvSpin{to{transform:rotate(360deg)}}@keyframes mzCvIn{from{opacity:0}}
 </style>
+<script id="mzErrLog">
+/* ===== تسجيل أخطاء البرنامج عند أي مستخدم (طالب / مدرس / مالك) في Supabase: جدول client_error_logs ===== */
+(function(){
+  var VER='2026-10-18-a', MAXP=30, sentN=0, seen={}, queue=[], busy=false;
+  window.MZ_APP_VER=VER;
+  function role(){
+    try{
+      if(window.mzOwnerTokGet && mzOwnerTokGet() && !window.MZ_TENANT) return 'owner';
+      if(typeof isAdminUnlocked!=='undefined' && isAdminUnlocked) return (typeof adminAccessLevel!=='undefined' && adminAccessLevel==='master') ? 'teacher' : 'staff';
+      if(localStorage.getItem('mz_student_phone')) return 'student';
+    }catch(e){}
+    return 'visitor';
+  }
+  function ref(){ try{ var ph=localStorage.getItem('mz_student_phone'); return ph ? 'st-'+String(ph).slice(-4) : (window.MZ_TENANT||''); }catch(e){ return ''; } }
+  function skip(msg,src){
+    msg=String(msg||'');
+    if(!msg) return true;
+    if(/ResizeObserver loop|^Script error\.?$|AbortError|The user aborted|NotAllowedError|play\(\) request was interrupted|Non-Error promise rejection/i.test(msg)) return true;
+    if(/chrome-extension:|moz-extension:|safari-extension:/.test(String(src||'')+msg)) return true;
+    try{ if(navigator.onLine===false) return true; }catch(e){}
+    return false;
+  }
+  function flush(){
+    if(busy || !queue.length) return;
+    var sb=window.__mzSb; if(!sb || !sb.rpc){ setTimeout(flush,1500); return; }
+    busy=true; var item=queue.shift();
+    var done=function(){ busy=false; if(queue.length) setTimeout(flush,250); };
+    try{ Promise.resolve(sb.rpc('log_client_error',{p:item})).then(done,done); }catch(e){ done(); }
+  }
+  function log(kind,message,stack,source,extra){
+    try{
+      if(skip(message,source) || sentN>=MAXP) return;
+      var key=kind+'|'+String(message).slice(0,160)+'|'+String(source||'').slice(0,80);
+      seen[key]=(seen[key]||0)+1; if(seen[key]>2) return;
+      sentN++;
+      queue.push({
+        kind:kind, message:String(message).slice(0,600), stack:stack?String(stack).slice(0,3000):null, source:source?String(source).slice(0,300):null,
+        tenant:window.MZ_TENANT||'', role:role(), user_ref:ref(), path:location.pathname, app_ver:VER,
+        ua:navigator.userAgent, viewport:innerWidth+'x'+innerHeight, online:navigator.onLine,
+        standalone:!!window.MZ_STANDALONE, extra:extra||null
+      });
+      flush();
+    }catch(e){}
+  }
+  window.mzLogError=log;
+  window.addEventListener('error',function(ev){
+    try{
+      var t=ev.target;
+      if(t && t!==window && t.tagName){
+        var u=t.src||t.href||''; if(!/^(SCRIPT|LINK)$/i.test(t.tagName)) return;
+        log('resource','failed to load '+t.tagName.toLowerCase()+': '+String(u).replace(/[?#].*$/,''),null,u);
+        return;
+      }
+      log('error',ev.message||(ev.error&&ev.error.message)||'error',ev.error&&ev.error.stack,(ev.filename||'')+':'+(ev.lineno||0)+':'+(ev.colno||0));
+    }catch(e){}
+  },true);
+  window.addEventListener('unhandledrejection',function(ev){
+    try{ var r=ev.reason; log('unhandledrejection',(r&&(r.message||r.error_description||r.details))||String(r),r&&r.stack,'promise'); }catch(e){}
+  });
+  /* أخطاء اللي البرنامج بيمسكها ويكتبها console.error (كتير من الشاشات بتبلع الخطأ وتكمل) */
+  var ce=console.error;
+  console.error=function(){
+    try{
+      var a=[].slice.call(arguments), m=a.map(function(x){ return x&&x.message ? x.message : (typeof x==='object'? (function(){ try{ return JSON.stringify(x).slice(0,200); }catch(e){ return String(x); } })() : String(x)); }).join(' ');
+      var er=a.filter(function(x){ return x&&x.stack; })[0];
+      log('console',m,er&&er.stack,'console.error');
+    }catch(e){}
+    return ce.apply(console,arguments);
+  };
+  /* فشل طلبات Supabase (500 / 4xx غير الدخول / انقطاع) */
+  try{
+    var of=window.fetch;
+    window.fetch=function(input,init){
+      var url=''; try{ url=typeof input==='string'?input:(input&&input.url)||''; }catch(e){}
+      var mine=/\.supabase\.co/.test(url) && !/log_client_error/.test(url);
+      var p=of.apply(this,arguments);
+      if(mine){
+        p.then(function(r){
+          if(r && r.status>=400 && r.status!==401 && r.status!==406){
+            var path=url.replace(/^https?:\/\/[^/]+/,'').replace(/[?#].*$/,'');
+            log('network','HTTP '+r.status+' '+path,null,path,{status:r.status});
+          }
+        },function(e){
+          var path=url.replace(/^https?:\/\/[^/]+/,'').replace(/[?#].*$/,'');
+          log('network','fetch failed '+path+' — '+((e&&e.message)||''),null,path);
+        });
+      }
+      return p;
+    };
+  }catch(e){}
+})();
+</script>
+<style id="mzSoftBoot">
+@keyframes mzSoftIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes mzSoftFade{from{opacity:0}to{opacity:1}}
+html.mz-boot-anim body{animation:mzSoftFade .35s ease-out both}
+html.mz-boot-anim .stage-grid>.stage-card{animation:mzSoftIn .42s cubic-bezier(.22,.8,.3,1) both}
+html.mz-boot-anim .stage-grid>.stage-card:nth-child(2){animation-delay:.04s}
+html.mz-boot-anim .stage-grid>.stage-card:nth-child(3){animation-delay:.08s}
+html.mz-boot-anim .stage-grid>.stage-card:nth-child(4){animation-delay:.12s}
+html.mz-boot-anim .stage-grid>.stage-card:nth-child(n+5){animation-delay:.16s}
+@media (prefers-reduced-motion:reduce){html.mz-boot-anim body,html.mz-boot-anim .stage-grid>.stage-card{animation:none}}
+</style>
+<script>(function(){var h=document.documentElement;h.classList.add('mz-boot-anim');setTimeout(function(){h.classList.remove('mz-boot-anim');},1500);})();</script>
 <script>(function(){try{var h=location.hash+location.search;if(localStorage.getItem('mz_oauth_pending')||/[#&?](access_token|code)=/.test(h)||sessionStorage.getItem('mz_entering')){document.documentElement.classList.add('mz-cover-on');setTimeout(function(){if(!window.__mzKeepCover&&!window.__mzGoing&&window.mzCoverOff)mzCoverOff();},15000);}window.addEventListener('pageshow',function(e){if(e.persisted&&window.mzCoverOff)mzCoverOff();});}catch(e){}})();</script>
 </head>
 <body>
@@ -4825,6 +4953,7 @@ He --- playing football. | *is | are | am | be"></textarea>
 const SUPABASE_URL = 'https://zjiwomeupvvsvoodubyq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_zQwGJrEzdgnlcGM4C48ALw_7DGS1YDy';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: (...a) => window.fetch(...a) } });
+window.__mzSb = _supabase;
 /* وضع "عرض كطالب" (من القائمة السريعة): طول ما هو شغّال، أي كتابة على قاعدة
    البيانات بتتجاهل بحيث التجربة متسجّلش نتايج/شهادات/زيارات وهمية. القراءة شغالة عادي. */
 window.MZ_SV = false;
@@ -6309,7 +6438,7 @@ function initAllRangeFills(){
   document.querySelectorAll('input[type=range]').forEach(updateRangeFill);
 }
 
-window.onload = async () => {
+window.__mzBoot = async () => {
   // ---- Recognize a remembered admin device, before anything else ----
   // If this browser previously logged into the admin panel successfully,
   // it holds a real server-issued session token (see tryAdminLogin /
@@ -6319,7 +6448,21 @@ window.onload = async () => {
   // client-side flag can no longer grant access by itself.
   try{
     const savedToken = window.MZ_ADMIN_FOREIGN ? null : localStorage.getItem('mz_admin_token');
-    if(savedToken){
+    const __savedLvl = (function(){ try{ return localStorage.getItem('mz_admin_device'); }catch(e){ return null; } })();
+    if(savedToken && (__savedLvl === 'master' || __savedLvl === 'team')){
+      /* فتح فوري بالجلسة المحفوظة (كل عملية كتابة بتتراجع في السيرفر برضه)، والتحقق الحقيقي بيتم في الخلفية من غير ما نوقّف الشاشة */
+      isAdminUnlocked = true; adminAccessLevel = __savedLvl; adminToken = savedToken;
+      try{ startAdminAlerts(); showAdminNotifBell(); showAdminOnlyUiForRole(); }catch(e){}
+      try{ logAdminActivity('open', 'فتح التطبيق'); }catch(e){}
+      verifyAdminToken(savedToken).then(function(r){
+        if(r !== null || adminToken !== savedToken) return;
+        isAdminUnlocked = false; adminAccessLevel = null; adminToken = null;
+        try{ stopAdminAlerts(); hideAdminNotifBell(); }catch(e){}
+        try{ localStorage.removeItem('mz_admin_device'); localStorage.removeItem('mz_admin_token'); }catch(e){}
+        try{ showToast('🚪 انتهت جلسة الإدارة — ادخل تاني'); }catch(e){}
+        setTimeout(function(){ try{ mzExitIfNoAdminNoStudent(); }catch(e){} }, 1200);
+      }).catch(function(){});
+    } else if(savedToken){
       let role = await verifyAdminToken(savedToken);
       // لو النت وقع لحظة الفتح: نكمل بالجلسة المحفوظة (كل عملية كتابة بتتراجع في السيرفر برضه)
       if(role === 'error'){
@@ -6353,14 +6496,7 @@ window.onload = async () => {
     showSiteDisabledScreen();
     return;
   }
-  try{
-    await Promise.all([
-      document.fonts.load('900 54px Poppins'), document.fonts.load('800 42px Poppins'),
-      document.fonts.load('700 20px Poppins'), document.fonts.load('600 19px Poppins'),
-      document.fonts.load('500 23px Poppins'),
-      document.fonts.load('700 40px "Dancing Script"'), document.fonts.load('600 40px "Dancing Script"'),
-    ]);
-  }catch(e){ /* fine — certificate falls back to Arial if Poppins isn't ready yet */ }
+  try{ ['900 54px Poppins','800 42px Poppins','700 20px Poppins','600 19px Poppins','500 23px Poppins','700 40px "Dancing Script"','600 40px "Dancing Script"'].forEach(function(f){ document.fonts.load(f).catch(function(){}); }); }catch(e){} /* بنحمّل الخطوط في الخلفية من غير ما نستنّاها */
   applySettingsToUI();
   renderStageGrid();
   renderRepeatCircles();
@@ -6394,6 +6530,7 @@ window.onload = async () => {
   if(isAdminUnlocked) setTimeout(maybeShowDailyBrief, 600);
   startSettingsPolling();
 };
+(function(){ var go=function(){ if(window.__mzBooted) return; window.__mzBooted=true; window.__mzBoot(); }; if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',go); else go(); })();
 
 /* ============================================================
    LIVE SETTINGS SYNC — checks for admin changes every 5s so an
@@ -6418,6 +6555,7 @@ function startSettingsPolling(){
       // causing a visible flash even when the admin hadn't changed anything.
       const prevSettingsJSON = JSON.stringify(appSettings);
       appSettings = { ...appSettings, ...data };
+      try{ localStorage.setItem(__mzCfgKey(), JSON.stringify(data)); }catch(e){}
       if(!Array.isArray(appSettings.free_stages)) appSettings.free_stages = ['found'];
       if(!appSettings.stage_status || typeof appSettings.stage_status !== 'object') appSettings.stage_status = {};
       if(!appSettings.stage_captions || typeof appSettings.stage_captions !== 'object') appSettings.stage_captions = {};
@@ -6474,14 +6612,22 @@ function startSettingsPolling(){
   };
   // كل 15 ثانية بدل 5 (تخفيف الحمل على Supabase). ولما التبويب يرجع للواجهة نعمل فحص فوري.
   settingsPollTimer = setInterval(__settingsPollFn, 15000);
+  if(window.__mzCfgCached){ window.__mzCfgCached = false; setTimeout(__settingsPollFn, 30); }
   document.addEventListener('visibilitychange', () => { if(!document.hidden) __settingsPollFn(); });
 }
 
+function __mzCfgKey(){ return 'mz_cfg_v1_' + (window.MZ_TENANT || '_'); }
 async function loadAppSettings(){
+  /* فتح لحظي: لو عندنا آخر إعدادات محفوظة نعرضها فورًا، والتحديث الحقيقي بيجي في الخلفية (poll) ويغيّر الشاشة بس لو فيه اختلاف */
+  try{
+    const c = JSON.parse(localStorage.getItem(__mzCfgKey()) || 'null');
+    if(c && typeof c === 'object' && c.id !== undefined && !c.app_disabled){ appSettings = c; window.__mzCfgCached = true; __mzNormSettings(); return; }
+  }catch(e){}
   try{
     const { data, error } = await _supabase.from('app_settings').select('*').eq('id', 1).single();
     if(error) throw error;
     appSettings = data;
+    try{ localStorage.setItem(__mzCfgKey(), JSON.stringify(data)); }catch(e){}
   }catch(e){
     console.error('settings load error', e);
     appSettings = { teacher_name:'', teacher_name_en:'', whatsapp_number:'', vodafone_number:'', free_words_count:2,
@@ -6493,6 +6639,9 @@ async function loadAppSettings(){
       hero_show_ring:true, hero_show_badge:true, sound_enabled:true, unit_lesson_nav_enabled:true,
       mzai_team_daily_limit:20, mzai_icon_shape:'circle', mzai_icon_color1:'', mzai_icon_color2:'', points_levels:null };
   }
+  __mzNormSettings();
+}
+function __mzNormSettings(){
   if(appSettings.mzai_team_daily_limit == null) appSettings.mzai_team_daily_limit = 20;
   if(!appSettings.mzai_icon_shape) appSettings.mzai_icon_shape = 'circle';
   if(appSettings.mzai_icon_color1 == null) appSettings.mzai_icon_color1 = '';
@@ -13451,6 +13600,7 @@ function loadScriptOnce(src){
 
 async function ensureJsPDF(){
   if(window.jspdf && window.jspdf.jsPDF) return true;
+  try{ if(await window.mzLoadLib('jspdf')) return true; }catch(e){}
   const mirrors = [
     'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
     'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
@@ -18599,8 +18749,8 @@ function setImages(fileList){
 $('mzaiFile').onchange=e=>{ setImages(e.target.files); };
 
 /* ---------- ملفات PDF / Word / نص: بنستخرج النص وبنحطه في صندوق الكتابة عشان تراجعيه قبل الإرسال ---------- */
-if(window.pdfjsLib){ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(_){} }
 async function extractPdfText(file){
+  await window.mzLoadLib('pdfjs');
   if(!window.pdfjsLib) throw new Error('مكتبة قراءة الـ PDF متحملتش، جربي تحدّثي الصفحة.');
   const buf=await file.arrayBuffer();
   const doc=await pdfjsLib.getDocument({data:buf}).promise;
@@ -18613,6 +18763,7 @@ async function extractPdfText(file){
   return text.trim();
 }
 async function extractDocxText(file){
+  await window.mzLoadLib('mammoth');
   if(!window.mammoth) throw new Error('مكتبة قراءة ملفات Word متحملتش، جربي تحدّثي الصفحة.');
   const buf=await file.arrayBuffer();
   const r=await mammoth.extractRawText({arrayBuffer:buf});
@@ -26769,7 +26920,7 @@ function mzoPhotoPicked(inp){
   r.readAsDataURL(f);
 }
 function mzoLogout(expired){
-  window.mzOwnerTokClear(); try{ sessionStorage.removeItem('mz_owner_return'); sessionStorage.removeItem('mz_owner_open'); }catch(e){}
+  window.mzOwnerTokClear(); try{ sessionStorage.removeItem('mz_owner_return'); sessionStorage.removeItem('mz_owner_open'); localStorage.removeItem('mz_owner_return'); }catch(e){}
   document.getElementById('mzoOverlay').classList.remove('show');
   document.documentElement.classList.remove('mzo-lock');
   var back = document.getElementById('mzoBackBtn'); if(back) back.remove();
@@ -26961,7 +27112,7 @@ async function mzoOpenTeacher(id){
     var row = Array.isArray(r) ? r[0] : r;
     if(!row || !row.token){ showToast('❌ تعذّر الفتح'); return; }
     try{
-      sessionStorage.setItem('mz_owner_return', '1');
+      sessionStorage.setItem('mz_owner_return', '1'); localStorage.setItem('mz_owner_return', '1');
       localStorage.setItem('mz_tenant', row.slug);
       localStorage.setItem('mz_admin_tenant', row.slug);
       localStorage.setItem('mz_admin_token', row.token);
@@ -27069,7 +27220,7 @@ window.addEventListener('load', function(){
         var b = document.createElement('button'); b.id = 'mzoBackBtn'; b.className = 'mzo-back'; b.innerHTML = '<span class="mzo-back-ic">👑</span><span class="mzo-back-tx"><b>الرجوع للوحة المالك</b><small>إنهاء الزيارة والعودة لكل المنصات</small></span><span class="mzo-back-ar">‹</span>';
         b.onclick = function(){
           try{
-            sessionStorage.removeItem('mz_owner_return'); sessionStorage.setItem('mz_owner_open', '1');
+            sessionStorage.removeItem('mz_owner_return'); localStorage.removeItem('mz_owner_return'); sessionStorage.setItem('mz_owner_open', '1');
             localStorage.removeItem('mz_admin_token'); localStorage.removeItem('mz_admin_device'); localStorage.removeItem('mz_tenant'); localStorage.removeItem('mz_admin_tenant');
           }catch(e){}
           location.href = mzHomeUrl();
@@ -27434,7 +27585,7 @@ async function mzTeacherLogout(){
   }catch(e){}
   try{
     ['mz_admin_token', 'mz_admin_device', 'mz_tenant', 'mz_admin_tenant', 'mz_admin_name', 'mz_teacher_email', 'mz_oauth_pending'].forEach(function(k){ localStorage.removeItem(k); });
-    sessionStorage.removeItem('mz_owner_return'); sessionStorage.removeItem('mz_owner_open');
+    sessionStorage.removeItem('mz_owner_return'); sessionStorage.removeItem('mz_owner_open'); localStorage.removeItem('mz_owner_return');
   }catch(e){}
   try{ isAdminUnlocked = false; adminAccessLevel = null; adminToken = null; stopAdminAlerts(); }catch(e){}
   await Promise.race([ _supabase.auth.signOut().catch(function(){}), new Promise(function(r){ setTimeout(r, 1200); }) ]);
@@ -29181,9 +29332,23 @@ window.mzWizStart=function(email){
 /* رجوع من ChatGPT/أي صفحة تانية: لو في تسجيل ناقص والجلسة لسه موجودة، كمّل من نفس الخطوة */
 setTimeout(async function(){ try{
   if(!localStorage.getItem('mz_wiz_draft')||$('#mzw')||localStorage.getItem('mz_oauth_pending')||localStorage.getItem('mz_admin_token')) return;
+  /* المالك أو الطالب مالهمش علاقة بتسجيل المدرسين: مسودة قديمة على جهازهم ما تطلعش تنبيه */
+  if(localStorage.getItem('mz_owner_token')||localStorage.getItem('mz_student_phone')) return;
+  var dr=null; try{ dr=JSON.parse(localStorage.getItem('mz_wiz_draft')); }catch(e){}
+  /* مسودة أقدم من 3 أيام = مهجورة: نمسحها بدل ما نزعج بيها */
+  if(!dr||!dr.t||Date.now()-dr.t>3*86400000){ localStorage.removeItem('mz_wiz_draft'); localStorage.removeItem('mz_wiz_draft_photo'); return; }
   var s=await _supabase.auth.getSession(), u=s&&s.data&&s.data.session&&s.data.session.user;
-  if(u) window.mzTeacherFlow(u.email||'');
-  else showT('📝 تسجيلك ناقص — سجّل بجوجل وهتكمّل من نفس المكان');
+  if(u){ if(!window.__mzWizGo){ window.__mzWizGo=true; window.mzTeacherFlow(u.email||''); } }
+  else if(/[?&]resume=1/.test(location.search)){
+    /* جاي من ضغطة على إشعار الموبايل: نفتح جوجل على طول ونكمّل من نفس الخطوة */
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}
+    if(!window.__mzWizGo){ window.__mzWizGo=true; try{ window.mzGoogleLogin(); }catch(e){} }
+  }
+  else {
+    /* التنبيه مرة واحدة كل 12 ساعة بس، مش كل فتحة */
+    var lastN=+localStorage.getItem('mz_wiz_nag')||0;
+    if(Date.now()-lastN>12*3600000){ localStorage.setItem('mz_wiz_nag',String(Date.now())); showT('📝 تسجيلك ناقص — اضغط هنا وكمّل من نفس المكان'); try{ G('showToast')('📝 تسجيلك ناقص — اضغط هنا وكمّل من نفس المكان',9000); var tm=document.getElementById('toastMsg'); if(tm) tm.onclick=function(){ tm.classList.remove('show'); try{ window.mzGoogleLogin(); }catch(e){} }; }catch(e){} }
+  }
 }catch(e){} },1500);
 window.mzTeacherFlow=async function(email){
   var r=await _supabase.rpc('teacher_google_login');
@@ -29878,5 +30043,50 @@ html.mz-noneng #mzDock.ctx-words:not(.c) .g.words .row{justify-content:center;ga
 @keyframes mzwPulse{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.mzw-card>*,.mzw-orb,.mzw-art,.mzw-art .d{animation:none!important;opacity:1}}
 </style>
+<script id="mzDeepLink">
+/* ===== توجيه الإشعارات: لما حد يدوس على إشعار يفتح المكان المناسب جوه البرنامج ===== */
+(function(){
+  var done={};
+  function ready(){ return !!(window.__mzBooted && typeof appSettings!=='undefined' && appSettings && Object.keys(appSettings).length>3); }
+  function whenReady(fn,tries){
+    tries=tries||0;
+    if(ready()) return setTimeout(fn,250);
+    if(tries>40) return;
+    setTimeout(function(){ whenReady(fn,tries+1); },300);
+  }
+  window.mzGo=function(go){
+    if(!go||!go.t) return;
+    whenReady(function(){
+      try{
+        switch(go.t){
+          case 'student_notifs': if(typeof openAllNotifsModal==='function') openAllNotifsModal(); break;
+          case 'admin_tab':
+            openAdmin();
+            if(isAdminUnlocked){ var tries=0, iv=setInterval(function(){ tries++; var pn=document.getElementById('panel-'+go.tab); if(pn||tries>10){ clearInterval(iv); if(pn) try{ switchAdminTab(go.tab); }catch(e){} } },200); }
+            break;
+          case 'owner': if(window.mzOwnerTokGet && mzOwnerTokGet() && typeof mzoOpen==='function') mzoOpen(); break;
+          case 'parent': if(typeof openParent==='function') openParent(); break;
+          case 'wizard':
+            if(window.__mzWizGo) break; window.__mzWizGo=true;
+            if(document.getElementById('mzw')) break;
+            _supabase.auth.getSession().then(function(s){ var u=s&&s.data&&s.data.session&&s.data.session.user; if(u && window.mzTeacherFlow) window.mzTeacherFlow(u.email||''); else if(window.mzGoogleLogin) window.mzGoogleLogin(); });
+            break;
+        }
+      }catch(e){ try{ window.mzLogError('error','mzGo failed: '+(e&&e.message),e&&e.stack,'mzGo'); }catch(_){} }
+    });
+  };
+  /* التطبيق مفتوح: الـService Worker بيبعتلنا المكان */
+  try{ if(navigator.serviceWorker) navigator.serviceWorker.addEventListener('message',function(ev){ var d=ev.data||{}; if(d.type==='mz-go') window.mzGo(d.go); }); }catch(e){}
+  /* التطبيق كان مقفول: المكان جاي في الرابط ?go= */
+  try{
+    var q=new URLSearchParams(location.search), g=q.get('go');
+    if(g){
+      var go=JSON.parse(g);
+      q.delete('go'); var qs=q.toString(); try{ history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash); }catch(e){}
+      window.mzGo(go);
+    }
+  }catch(e){}
+})();
+</script>
 </body>
 </html>
