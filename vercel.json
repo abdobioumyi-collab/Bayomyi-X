@@ -1,5 +1,9 @@
 {
   "rewrites": [
-    { "source": "/((?!sw\\.js|manifest|.*\\..*).*)", "destination": "/index.html" }
+    {
+      "source": "/:slug([a-zA-Z][a-zA-Z0-9-]{2,29})",
+      "has": [{ "type": "header", "key": "user-agent", "value": "(?i)(whatsapp|facebookexternalhit|facebot|meta-externalagent|twitterbot|telegrambot|slackbot|linkedinbot|discordbot)" }],
+      "destination": "/api/og?slug=:slug"
+    }
   ]
 }
